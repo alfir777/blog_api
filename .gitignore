@@ -1,0 +1,10 @@
+/.idea/
+/env/
+/venv/
+/config/static/
+/config/media/
+/data/db/
+*.log
+.env
+db.sqlite3
+/blog_api/static/
