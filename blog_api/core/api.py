@@ -7,7 +7,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .models import Comment, Article
-from .serializers import CommentSerializer, ArticleSerializer
+from .serializers import ArticleSerializer, TreeCommentsSerializer, CommentSerializer, TreeCommentSerializer
 
 
 class ArticlesViewSet(APIView):
@@ -32,7 +32,7 @@ class ArticlesViewSet(APIView):
 
     @swagger_auto_schema(
         methods=['GET', ],
-        operation_summary='Список статей',
+        operation_summary='Список статей с комментариями',
         tags=['articles', ],
     )
     @action(detail=False, methods=['GET', ])
@@ -50,8 +50,6 @@ class CommentViewSet(APIView):
                               required=True),
             openapi.Parameter('content', openapi.IN_QUERY, description="text comment", type=openapi.TYPE_STRING,
                               required=True),
-            openapi.Parameter('parent', openapi.IN_QUERY, description="id comment", type=openapi.TYPE_INTEGER,
-                              required=False, default=None),
         ],
         operation_summary='Создание комментария к статье',
         tags=['comments', ],
@@ -60,8 +58,7 @@ class CommentViewSet(APIView):
     def post(self, request, *args, **kwargs):
         try:
             queryset = Comment(article=Article.objects.get(id=request.query_params.get('id')),
-                               content=request.query_params.get('content'),
-                               parent=request.query_params.get('parent'))
+                               content=request.query_params.get('content'))
             queryset.save()
         except ObjectDoesNotExist:
             response = {
@@ -83,10 +80,8 @@ class CommentViewSet(APIView):
     @action(detail=False, methods=['GET', ])
     def get(self, request, *args, **kwargs):
         queryset = Comment.objects.filter(parent=Comment.objects.get(id=request.query_params.get('id')))
-        print(queryset)
-        serializer = CommentSerializer(queryset, many=True)
-        print(serializer)
-        return Response({'success': serializer.data})
+        serializer = TreeCommentSerializer(queryset, many=True)
+        return Response(serializer.data)
 
 
 class TreeCommentViewSet(APIView):
@@ -105,15 +100,17 @@ class TreeCommentViewSet(APIView):
     def post(self, request, *args, **kwargs):
         try:
             parent = Comment.objects.get(id=request.query_params.get('id'))
-            Comment(article=parent.article,
-                    content=request.query_params.get('content'),
-                    parent=parent).save()
         except ObjectDoesNotExist:
             response = {
                 'error': 'Данного комментария не существует'
             }
             return JsonResponse(response, status=404)
-        return JsonResponse({'success': 'Успешно'}, status=201)
+        comment = Comment(article=parent.article,
+                          content=request.query_params.get('content'),
+                          parent=parent)
+        comment.save()
+        serializer = CommentSerializer(comment, many=False)
+        return JsonResponse(serializer.data, status=201)
 
     @swagger_auto_schema(
         methods=['GET', ],
@@ -123,5 +120,5 @@ class TreeCommentViewSet(APIView):
     @action(detail=False, methods=['GET', ])
     def get(self, request, *args, **kwargs):
         queryset = Comment.objects.all()
-        serializer = CommentSerializer(queryset, many=True)
+        serializer = TreeCommentsSerializer(queryset, many=True)
         return Response(serializer.data)
