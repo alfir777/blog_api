@@ -49,6 +49,7 @@ INSTALLED_APPS = [
 
     'rest_framework',
     'drf_yasg',
+    'mptt',
 
     'core.apps.CoreConfig',
 ]
