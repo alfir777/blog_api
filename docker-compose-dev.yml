@@ -1,0 +1,72 @@
+version: '3'
+
+networks:
+  web:
+    external: true
+  internal:
+    external: false
+
+services:
+  web:
+    build: .
+    container_name: web
+    env_file:
+      - .env
+    command: bash -c 'while !</dev/tcp/postgres/5432; do sleep 1; done; gunicorn --bind 0.0.0.0:8000 config.wsgi'
+    volumes:
+      - .:/home/user/web
+    restart: always
+    ports:
+      - '8010:8000'
+    expose:
+      - 8010
+    depends_on:
+      - postgres
+    networks:
+      - web
+      - internal
+
+  tests:
+    build: .
+    container_name: tests
+    env_file:
+      - .env
+    command: bash -c 'python3 manage.py test'
+    volumes:
+      - .:/home/user/web
+    restart: always
+    networks:
+      - web
+      - internal
+
+  lint:
+    build: .
+    container_name: lint
+    env_file:
+      - .env
+    command: bash -c 'pip install -r requirements_dev.txt && flake8 --max-line-length 120 --exclude migrations,venv,manage.py'
+    volumes:
+      - .:/home/user/web
+    restart: always
+    networks:
+      - web
+      - internal
+
+  postgres:
+    image: postgres:13
+    container_name: postgres
+    env_file:
+      - .env
+    volumes:
+      - ./postgres/data/db:/var/lib/postgresql/data
+    restart: always
+    ports:
+      - "5432:5432"
+    expose:
+      - 5432
+    environment:
+      - "POSTGRES_DB=${DATABASES_NAME}"
+      - "POSTGRES_USER=${DATABASES_USER}"
+      - "POSTGRES_PASSWORD=${DATABASES_PASSWORD}"
+    networks:
+      - internal
