@@ -1,3 +1,5 @@
+import datetime
+
 from django.core.exceptions import ObjectDoesNotExist
 from django.http import JsonResponse
 from drf_yasg import openapi
@@ -7,7 +9,8 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .models import Comment, Article
-from .serializers import ArticleSerializer, TreeCommentsSerializer, CommentSerializer, TreeCommentSerializer
+from .serializers import ArticleSerializer, CommentSerializer
+from .services import tree_walk
 
 
 class ArticlesViewSet(APIView):
@@ -32,7 +35,7 @@ class ArticlesViewSet(APIView):
 
     @swagger_auto_schema(
         methods=['GET', ],
-        operation_summary='Список статей с комментариями',
+        operation_summary='Список статей',
         tags=['articles', ],
     )
     @action(detail=False, methods=['GET', ])
@@ -57,15 +60,16 @@ class CommentViewSet(APIView):
     @action(detail=False, methods=['POST', ])
     def post(self, request, *args, **kwargs):
         try:
-            queryset = Comment(article=Article.objects.get(id=request.query_params.get('id')),
-                               content=request.query_params.get('content'))
-            queryset.save()
+            article = Article.objects.get(id=request.query_params.get('id'))
         except ObjectDoesNotExist:
             response = {
                 'info': 'Данной статьи не существует'
             }
             return JsonResponse(response, status=404)
-        serializer = CommentSerializer(queryset)
+        comment = Comment.add_root(article=article,
+                                   content=request.query_params.get('content'),
+                                   created=datetime.datetime.now())
+        serializer = CommentSerializer(comment)
         return Response(serializer.data, status=201)
 
     @swagger_auto_schema(
@@ -79,9 +83,23 @@ class CommentViewSet(APIView):
     )
     @action(detail=False, methods=['GET', ])
     def get(self, request, *args, **kwargs):
-        queryset = Comment.objects.filter(parent=Comment.objects.get(id=request.query_params.get('id')))
-        serializer = TreeCommentSerializer(queryset, many=True)
-        return Response(serializer.data)
+        comment = Comment.objects.get(id=request.query_params.get('id'))
+        comment_children = comment.get_descendants().values()
+        data = []
+        path_old = None
+        for comment in comment_children:
+            if str(path_old) in comment['path']:
+                data[-1] = tree_walk(data[-1], comment)
+            else:
+                data.append({
+                    "id": comment['id'],
+                    "article": comment['article_id'],
+                    "content": comment['content'],
+                    "path": comment['path'],
+                    "children": [],
+                })
+            path_old = comment['path'][:8]
+        return JsonResponse(data, safe=False, status=200)
 
 
 class TreeCommentViewSet(APIView):
@@ -99,17 +117,16 @@ class TreeCommentViewSet(APIView):
     @action(detail=False, methods=['POST', ])
     def post(self, request, *args, **kwargs):
         try:
-            parent = Comment.objects.get(id=request.query_params.get('id'))
+            comment = Comment.objects.get(id=request.query_params.get('id'))
         except ObjectDoesNotExist:
             response = {
                 'error': 'Данного комментария не существует'
             }
             return JsonResponse(response, status=404)
-        comment = Comment(article=parent.article,
-                          content=request.query_params.get('content'),
-                          parent=parent)
-        comment.save()
-        serializer = CommentSerializer(comment, many=False)
+        comment = comment.add_child(article=comment.article,
+                                    content=request.query_params.get('content'),
+                                    created=datetime.datetime.now())
+        serializer = CommentSerializer(comment)
         return JsonResponse(serializer.data, status=201)
 
     @swagger_auto_schema(
@@ -119,6 +136,19 @@ class TreeCommentViewSet(APIView):
     )
     @action(detail=False, methods=['GET', ])
     def get(self, request, *args, **kwargs):
-        queryset = Comment.objects.all()
-        serializer = TreeCommentsSerializer(queryset, many=True)
-        return Response(serializer.data)
+        comments = Comment.objects.values()
+        data = []
+        path_old = None
+        for comment in comments:
+            if str(path_old) in comment['path']:
+                data[-1] = tree_walk(data[-1], comment)
+            else:
+                data.append({
+                    "id": comment['id'],
+                    "article": comment['article_id'],
+                    "content": comment['content'],
+                    "path": comment['path'],
+                    "children": [],
+                })
+            path_old = comment['path'][:4]
+        return JsonResponse(data, safe=False, status=200)

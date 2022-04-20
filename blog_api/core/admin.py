@@ -1,5 +1,7 @@
 from django import forms
 from django.contrib import admin
+from treebeard.admin import TreeAdmin
+from treebeard.forms import movenodeform_factory
 
 from .models import Article, Comment
 
@@ -12,12 +14,6 @@ class ArticleAdminForm(forms.ModelForm):
         fields = '__all__'
 
 
-class CommentAdminForm(forms.ModelForm):
-    class Meta:
-        model = Comment
-        fields = '__all__'
-
-
 class ArticleAdmin(admin.ModelAdmin):
     list_display = ('id', 'title')
 
@@ -25,10 +21,10 @@ class ArticleAdmin(admin.ModelAdmin):
         form = ArticleAdminForm
 
 
-class CommentAdmin(admin.ModelAdmin):
-    list_display = ('id', 'article', 'article', 'parent')
+class CommentAdmin(TreeAdmin):
+    list_display = ('id', 'article', 'article')
 
-    form = CommentAdminForm
+    form = movenodeform_factory(Comment)
 
 
 admin.site.register(Article, ArticleAdmin)
